@@ -140,6 +140,9 @@ def curve_luminances(images, init_luminances, target_luminances):
 
 
 def worker_func_luminance(args):
+	"""
+	Worker function for curve_luminances_files()
+	"""
 	# Unpack arguments
 	in_path = args[0]
 	init_luminance = args[1]
