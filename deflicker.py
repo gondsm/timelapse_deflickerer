@@ -13,10 +13,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-INPUT_DIR = "timelapse"
-OUTPUT_DIR = "output"
-
-
 def list_images(input_dir):
 	""" Produces a list of all the filenames in the input directory. """
 	# List the file names
@@ -28,40 +24,6 @@ def list_images(input_dir):
 
 	# And return them
 	return filenames
-
-
-def load_images(filenames):
-	"""
-	Loads images from the folder into an array.
-	"""
-	# An empty initial list for images
-	images = []
-
-	# Load an image per filename
-	for filename in filenames:
-		path = os.path.join(INPUT_DIR, filename)
-		images.append(cv2.cvtColor(cv2.imread(path), cv2.COLOR_BGR2RGB))
-
-	# And we're done!
-	return images
-
-
-def reduce_images(images):
-	"""
-	Reduce all images, to speed up processing.
-	"""
-	# Again, an empty list
-	reduced_images = []
-
-	# Reduce each individual image
-	for image in images:
-		fraction = 0.2
-		new_size = (int(image.shape[1] * fraction), int(image.shape[0] * fraction))
-		small_img = cv2.resize(image, new_size)
-		reduced_images.append(small_img)
-
-	# And we're done!
-	return reduced_images
 
 
 def calculate_luminance(image):
@@ -79,26 +41,10 @@ def calculate_luminance(image):
 	for y in range(0, h, int(h/50)):
 		for x in range(0, w, int(w/50)):
 			r,g,b = image[y, x]
-			#brightness.append(0.299*r + 0.587*g + 0.114*b)
 			brightness.append(0.333*r + 0.333*g + 0.333*b)
 
 	# And return an average
 	return np.mean(brightness)
-
-
-def calculate_luminances(images):
-	"""
-	Calculates the sequence of luminances in a list of opencv images.
-	"""
-	# An empty list for luminances
-	luminances = []
-
-	# Calculate for each image
-	p = multiprocessing.Pool(multiprocessing.cpu_count())
-	luminances = p.map(calculate_luminance, images)
-
-	# And we're done!
-	return luminances
 
 
 def worker_func(path):
@@ -125,15 +71,6 @@ def calculate_luminances_files(directory, filenames):
 
 	# And we're done!
 	return luminances
-
-
-def export_images(images, out_dir):
-	"""
-	Export a set of images to an output directory.
-	"""
-	for i, image in enumerate(images):
-		path = os.path.join(out_dir, str(i)+".jpg")
-		cv2.imwrite(path, cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
 
 
 def set_luminance(image, init_luminance, final_luminance):
@@ -215,7 +152,7 @@ def worker_func_luminance(args):
 	cv2.imwrite(out_path, cv2.cvtColor(equalized_image, cv2.COLOR_RGB2BGR))
 
 
-def curve_luminances_files(filenames, init_luminances, target_luminances):
+def curve_luminances_files(filenames, init_luminances, target_luminances, input_dir, output_dir):
 	"""
 	Given a luminance, tries to make luminance follow the curve.
 	"""
@@ -224,9 +161,9 @@ def curve_luminances_files(filenames, init_luminances, target_luminances):
 	equalized_image_filenames = []
 	for i, filename in enumerate(filenames):
 		# Generate the input and output paths, and the initial and target luminances
-		in_path = os.path.join(INPUT_DIR, filename)
+		in_path = os.path.join(input_dir, filename)
 		out_filename = str(i)+".jpg"
-		out_path = os.path.join(OUTPUT_DIR, out_filename)
+		out_path = os.path.join(output_dir, out_filename)
 		args.append([in_path, init_luminances[i], target_luminances[i], out_path])
 		equalized_image_filenames.append(out_filename)
 
@@ -256,7 +193,8 @@ def calculate_error(luminances, ref_curve):
 	"""
 	# Calculate the error
 	error = np.abs(np.array(luminances) - np.array(ref_curve))
-	# And return it
+
+	# And return the metrics we want
 	return np.sum(error), np.mean(error), np.std(error)
 
 
@@ -264,49 +202,20 @@ def plot_luminance_curves(curves, filename, labels=None):
 	"""
 	Plots a luminance curve.
 	"""
+	# Create a new figure
 	plt.figure()
+
+	# Plot all curves, adding labels if they exist
 	for i, curve in enumerate(curves):
 		if labels==None:
 			plt.plot(curve)
 		else:
 			plt.plot(curve, label=labels[i])
 	plt.legend()
+
+	# Save the figure and close it
 	plt.savefig(filename)
 	plt.clf()
-
-
-def deflicker_in_memory():
-	print("Listing filenames")
-	filenames = list_images(INPUT_DIR)
-
-	print("Loading images")
-	images = load_images(filenames)
-	print("Loaded", len(images), "images.")
-
-	print("Calculating luminances")
-	luminances = calculate_luminances(images)
-	print("Initial luminances:")
-	print("Mean:", np.mean(luminances), "std:", np.std(luminances))
-
-	err_sum, err_mean, err_std = calculate_error(luminances, fitted_curve)
-	print("Total error:", err_sum, "avg", err_mean, "std", err_std)
-
-	print("Fitting luminance curve")
-	fitted_curve = fit_luminance_curve(luminances)
-
-	print("Equalizing luminances to", np.mean(luminances))
-	equalized_images = curve_luminances(images, luminances, fitted_curve)
-
-	print("Calculating luminances")
-	new_luminances = calculate_luminances(reduce_images(equalized_images))
-	print("New luminances:")
-	print("Mean:", np.mean(new_luminances), "std:", np.std(new_luminances))
-
-	err_sum, err_mean, err_std = calculate_error(new_luminances, fitted_curve)
-	print("Total error:", err_sum, "avg", err_mean, "std", err_std)
-
-	print("Plotting curves.")
-	plot_luminance_curves([luminances, fitted_curve, new_luminances], "curves.pdf", ["original", "fitted", "result"])
 
 
 def deflicker_with_files(input_dir=INPUT_DIR, output_dir=OUTPUT_DIR):
@@ -333,7 +242,7 @@ def deflicker_with_files(input_dir=INPUT_DIR, output_dir=OUTPUT_DIR):
 	print("Total error:", err_sum, "avg", err_mean, "std", err_std)
 
 	print("Curving luminances")
-	equalized_image_filenames = curve_luminances_files(original_filenames, luminances, fitted_curve)
+	equalized_image_filenames = curve_luminances_files(original_filenames, luminances, fitted_curve, input_dir, output_dir)
 
 	print("Calculating luminances")
 	new_luminances = calculate_luminances_files(output_dir, equalized_image_filenames)
@@ -349,5 +258,10 @@ def deflicker_with_files(input_dir=INPUT_DIR, output_dir=OUTPUT_DIR):
 
 
 if __name__ == "__main__":
-	deflicker_with_files()	
+	# Define the input and output directories
+	input_dir = "timelapse"
+	output_dir = "output"
+
+	# And call the main function
+	deflicker_with_files(input_dir, output_dir)	
 
