@@ -10,9 +10,7 @@ import multiprocessing
 # Non-standard
 import cv2
 import numpy as np
-import skvideo.io
 import matplotlib.pyplot as plt
-import scipy
 
 
 INPUT_DIR = "timelapse"
@@ -23,6 +21,10 @@ def list_images(input_dir):
 	""" Produces a list of all the filenames in the input directory. """
 	# List the file names
 	filenames = sorted(os.listdir(input_dir))
+
+	# Filter out our instructional file
+	# (putting it there was a great idea)
+	filenames = [f for f in filenames if "DROP_INPUT" not in f]
 
 	# And return them
 	return filenames
@@ -272,7 +274,6 @@ def fit_luminance_curve(luminances):
 	"""
 	Interpolates and smoothes a new luminance curve.
 	"""
-	#scipy.interpolate.interp1d
 	poly = np.polyfit(range(len(luminances)), luminances, 5)
 	return np.polyval(poly, range(len(luminances)))
 
@@ -287,31 +288,6 @@ def calculate_error(luminances, ref_curve):
 	return np.sum(error), np.mean(error), np.std(error)
 
 
-
-def write_video(images, filename):
-	# I expected this to be longer
-	skvideo.io.vwrite(filename, images)
-
-
-def write_video_files(directory, filenames, output_filename):
-	"""
-	Writes the videos with the frames contained in the directory (described
-	by the filenames).
-	"""
-	# Initialize an ffmpeg writer
-	writer = skvideo.io.FFmpegWriter(output_filename)
-
-	# Import each image and add it to the writer
-	for filename in filenames:
-		path = os.path.join(directory, filename)
-		image = cv2.cvtColor(cv2.imread(path), cv2.COLOR_BGR2RGB)
-		writer.writeFrame(image)
-
-	# And close the writer
-	writer.close()
-
-
-
 def deflicker_in_memory():
 	print("Listing filenames")
 	filenames = list_images(INPUT_DIR)
@@ -319,9 +295,6 @@ def deflicker_in_memory():
 	print("Loading images")
 	images = load_images(filenames)
 	print("Loaded", len(images), "images.")
-
-	#print("Exporting first video")
-	#write_video(images, "original.mp4")
 
 	print("Calculating luminances")
 	luminances = calculate_luminances(images)
@@ -344,15 +317,6 @@ def deflicker_in_memory():
 	calculate_error(new_luminances, fitted_curve)
 	
 	plot_luminance_curves([luminances, fitted_curve, new_luminances], "curves.pdf", ["original", "fitted", "result"])
-
-	del(images)
-
-	#print("Exporting images")
-	#export_images(equalized_images, OUTPUT_DIR)
-	#print("Done!")
-
-	#print("Exporting video")
-	#write_video(equalized_images, "equalized.mp4")
 
 
 def deflicker_with_files(input_dir=INPUT_DIR, output_dir=OUTPUT_DIR):
@@ -392,10 +356,6 @@ def deflicker_with_files(input_dir=INPUT_DIR, output_dir=OUTPUT_DIR):
 	
 	print("Plotting curves")
 	plot_luminance_curves([luminances, fitted_curve, new_luminances], "curves.pdf", ["original", "fitted", "result"])
-
-	#print("Exporting video")
-	#write_video_files(input_dir, original_filenames, "original.mp4")
-	#write_video_files(output_dir, equalized_image_filenames, "equalized.mp4")
 
 
 if __name__ == "__main__":
