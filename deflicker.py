@@ -97,10 +97,6 @@ def calculate_luminances(images):
 	p = multiprocessing.Pool(multiprocessing.cpu_count())
 	luminances = p.map(calculate_luminance, images)
 
-	#print(p.map(f, [1, 2, 3]))
-	#for image in images:
-	#	luminances.append(calculate_luminance(image))
-
 	# And we're done!
 	return luminances
 
@@ -180,6 +176,9 @@ def set_luminance(image, init_luminance, final_luminance):
 
 
 def adjust_gamma(image, gamma=1.2):
+	"""
+	Adjusts an image's gamma, returns an adjusted copy.
+	"""
 	# https://www.pyimagesearch.com/2015/10/05/opencv-gamma-correction/
 	# build a lookup table mapping the pixel values [0, 255] to
 	# their adjusted gamma values
@@ -188,22 +187,6 @@ def adjust_gamma(image, gamma=1.2):
  
 	# apply gamma correction using the lookup table
 	return cv2.LUT(image, table)
-
-
-def equalize_luminances(images, luminances):
-	"""
-	Given a luminance, tries to equalize all images to it.
-	"""
-	# Calculate the luminance we'll be setting the images to
-	avg_luminance = np.mean(luminances)
-
-	# Set luminances individually
-	equalized_images = []
-	for i, image in enumerate(images):
-		equalized_images.append(set_luminance(image, luminances[i], avg_luminance))
-
-	# And we're done!
-	return equalized_images
 
 
 def curve_luminances(images, init_luminances, target_luminances):
@@ -255,6 +238,28 @@ def curve_luminances_files(filenames, init_luminances, target_luminances):
 	return equalized_image_filenames
 
 
+def fit_luminance_curve(luminances, degree=5):
+	"""
+	Interpolates and smoothes a new luminance curve.
+	"""
+	# Find a polynomial that approximates the curve,
+	# smoothing it
+	poly = np.polyfit(range(len(luminances)), luminances, degree)
+
+	# And return its counterdomain in the same range
+	return np.polyval(poly, range(len(luminances)))
+
+
+def calculate_error(luminances, ref_curve):
+	"""
+	Calculates the average, std and total error.
+	"""
+	# Calculate the error
+	error = np.abs(np.array(luminances) - np.array(ref_curve))
+	# And return it
+	return np.sum(error), np.mean(error), np.std(error)
+
+
 def plot_luminance_curves(curves, filename, labels=None):
 	"""
 	Plots a luminance curve.
@@ -270,24 +275,6 @@ def plot_luminance_curves(curves, filename, labels=None):
 	plt.clf()
 
 
-def fit_luminance_curve(luminances):
-	"""
-	Interpolates and smoothes a new luminance curve.
-	"""
-	poly = np.polyfit(range(len(luminances)), luminances, 5)
-	return np.polyval(poly, range(len(luminances)))
-
-
-def calculate_error(luminances, ref_curve):
-	"""
-	Calculates the average, std and total error.
-	"""
-	# Calculate the error
-	error = np.abs(np.array(luminances) - np.array(ref_curve))
-	# And return it
-	return np.sum(error), np.mean(error), np.std(error)
-
-
 def deflicker_in_memory():
 	print("Listing filenames")
 	filenames = list_images(INPUT_DIR)
@@ -301,10 +288,11 @@ def deflicker_in_memory():
 	print("Initial luminances:")
 	print("Mean:", np.mean(luminances), "std:", np.std(luminances))
 
+	err_sum, err_mean, err_std = calculate_error(luminances, fitted_curve)
+	print("Total error:", err_sum, "avg", err_mean, "std", err_std)
+
 	print("Fitting luminance curve")
 	fitted_curve = fit_luminance_curve(luminances)
-
-	calculate_error(luminances, fitted_curve)
 
 	print("Equalizing luminances to", np.mean(luminances))
 	equalized_images = curve_luminances(images, luminances, fitted_curve)
@@ -314,8 +302,10 @@ def deflicker_in_memory():
 	print("New luminances:")
 	print("Mean:", np.mean(new_luminances), "std:", np.std(new_luminances))
 
-	calculate_error(new_luminances, fitted_curve)
-	
+	err_sum, err_mean, err_std = calculate_error(new_luminances, fitted_curve)
+	print("Total error:", err_sum, "avg", err_mean, "std", err_std)
+
+	print("Plotting curves.")
 	plot_luminance_curves([luminances, fitted_curve, new_luminances], "curves.pdf", ["original", "fitted", "result"])
 
 
