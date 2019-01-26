@@ -221,7 +221,7 @@ def plot_luminance_curves(curves, filename, labels=None):
 	plt.clf()
 
 
-def deflicker_with_files(input_dir=INPUT_DIR, output_dir=OUTPUT_DIR):
+def deflicker_with_files(input_dir, output_dir):
 	"""
 	Instead of loading everything into memory and blowing up, this function
 	uses file-based methods. Thanks to caching and whatnot, the IO latency is
